@@ -33,7 +33,9 @@
     "lint:test": "eslint -c test/.eslintrc.json --ignore-path test/.eslintignore 'test/**/*.js'",
     "lint": "yarn lint:server && yarn lint:shared && yarn lint:frontend && yarn lint:test",
     "posttest": "yarn lint",
-    "fixmodulenotdefined": "yarn cache clean && cd core/client && rm -rf node_modules tmp dist && yarn && cd ../../"
+    "fixmodulenotdefined": "yarn cache clean && cd core/client && rm -rf node_modules tmp dist && yarn && cd ../../",
+    "snyk-protect": "snyk protect",
+    "prepare": "yarn run snyk-protect"
   },
   "engines": {
     "node": "^10.13.0 || ^12.10.0",
@@ -131,7 +133,8 @@
     "uuid": "8.1.0",
     "validator": "6.3.0",
     "xml": "1.0.1",
-    "applicationinsights": "^1.0.0"
+    "applicationinsights": "^1.0.0",
+    "snyk": "^1.346.0"
   },
   "optionalDependencies": {
     "@tryghost/html-to-mobiledoc": "0.7.0",
@@ -168,5 +171,6 @@
   },
   "resolutions": {
     "moment-timezone": "0.5.23"
-  }
+  },
+  "snyk": true
 }
