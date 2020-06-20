@@ -1,12 +1,14 @@
 const _ = require('lodash');
 const url = require('url');
 const moment = require('moment');
-const common = require('../../lib/common');
+const errors = require('@tryghost/errors');
+const {events, i18n} = require('../../lib/common');
+const logging = require('../../../shared/logging');
 const membersService = require('../members');
 const bulkEmailService = require('../bulk-email');
 const models = require('../../models');
 const postEmailSerializer = require('./post-email-serializer');
-const config = require('../../config');
+const config = require('../../../shared/config');
 
 const getEmailData = async (postModel, members = []) => {
     const {emailTmpl, replacements} = await postEmailSerializer.serialize(postModel);
@@ -147,14 +149,14 @@ const retryFailedEmail = async (model) => {
  */
 async function handleUnsubscribeRequest(req) {
     if (!req.url) {
-        throw new common.errors.BadRequestError({
+        throw new errors.BadRequestError({
             message: 'Unsubscribe failed! Could not find member'
         });
     }
 
     const {query} = url.parse(req.url, true);
     if (!query || !query.uuid) {
-        throw new common.errors.BadRequestError({
+        throw new errors.BadRequestError({
             message: (query.preview ? 'Unsubscribe preview' : 'Unsubscribe failed! Could not find member')
         });
     }
@@ -164,7 +166,7 @@ async function handleUnsubscribeRequest(req) {
     });
 
     if (!member) {
-        throw new common.errors.BadRequestError({
+        throw new errors.BadRequestError({
             message: 'Unsubscribe failed! Could not find member'
         });
     }
@@ -172,7 +174,7 @@ async function handleUnsubscribeRequest(req) {
     try {
         return await membersService.api.members.update({subscribed: false}, {id: member.id});
     } catch (err) {
-        throw new common.errors.InternalServerError({
+        throw new errors.InternalServerError({
             message: 'Failed to unsubscribe member'
         });
     }
@@ -184,7 +186,7 @@ function checkHostLimitForMembers(members = []) {
         const allowedMembersLimit = membersHostLimit.max;
         const hostUpgradeLink = config.get('host_settings:limits').upgrade_url;
         if (members.length > allowedMembersLimit) {
-            throw new common.errors.HostLimitError({
+            throw new errors.HostLimitError({
                 message: `Your current plan allows you to send email to up to ${allowedMembersLimit} members, but you currently have ${members.length} members`,
                 help: hostUpgradeLink,
                 errorDetails: {
@@ -230,9 +232,9 @@ async function pendingEmailHandler(emailModel, options) {
         //       needs filtering and saving objects of {error, batchData} form to separate property
         meta = await sendEmail(postModel, members);
     } catch (err) {
-        common.logging.error(new common.errors.GhostError({
+        logging.error(new errors.GhostError({
             err: err,
-            context: common.i18n.t('errors.services.mega.requestFailed.error')
+            context: i18n.t('errors.services.mega.requestFailed.error')
         }));
         error = err.message;
     }
@@ -260,7 +262,7 @@ async function pendingEmailHandler(emailModel, options) {
             id: emailModel.id
         });
     } catch (err) {
-        common.logging.error(err);
+        logging.error(err);
     }
 }
 
@@ -275,8 +277,8 @@ const statusChangedHandler = (emailModel, options) => {
 };
 
 function listen() {
-    common.events.on('email.added', pendingEmailHandler);
-    common.events.on('email.edited', statusChangedHandler);
+    events.on('email.added', pendingEmailHandler);
+    events.on('email.edited', statusChangedHandler);
 }
 
 // Public API

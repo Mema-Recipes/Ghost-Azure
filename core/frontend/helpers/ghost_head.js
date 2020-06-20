@@ -2,7 +2,7 @@
 // Usage: `{{ghost_head}}`
 //
 // Outputs scripts and other assets at the top of a Ghost theme
-const {metaData, escapeExpression, SafeString, logging, settingsCache, config, blogIcon, labs} = require('../services/proxy');
+const {metaData, escapeExpression, SafeString, logging, settingsCache, config, blogIcon, labs, urlUtils} = require('../services/proxy');
 const _ = require('lodash');
 const debug = require('ghost-ignition').debug('ghost_head');
 
@@ -15,7 +15,7 @@ function writeMetaTag(property, content, type) {
 }
 
 function finaliseStructuredData(metaData) {
-    var head = [];
+    const head = [];
 
     _.each(metaData.structuredData, function (content, property) {
         if (property === 'article:tag') {
@@ -43,8 +43,15 @@ function getMembersHelper() {
     const stripeSecretToken = stripePaymentProcessor.config.secret_token;
     const stripePublicToken = stripePaymentProcessor.config.public_token;
 
+    const stripeConnectIntegration = settingsCache.get('stripe_connect_integration');
+
     let membersHelper = `<script defer src="${getAssetUrl('public/members.js', true)}"></script>`;
-    if (!!stripeSecretToken && stripeSecretToken !== '' && !!stripePublicToken && stripePublicToken !== '') {
+    if (config.get('enableDeveloperExperiments')) {
+        const siteUrl = urlUtils.getSiteUrl().replace(/\/$/, '');
+        membersHelper = `<meta name="ghost:site" content='${siteUrl}' />`;
+        membersHelper += `<script defer src="https://unpkg.com/@tryghost/members-js@latest/umd/members.min.js"></script>`;
+    }
+    if ((!!stripeSecretToken && !!stripePublicToken) || !!stripeConnectIntegration.account_id) {
         membersHelper += '<script src="https://js.stripe.com/v3/"></script>';
     }
     return membersHelper;
@@ -93,16 +100,16 @@ module.exports = function ghost_head(options) { // eslint-disable-line camelcase
         return;
     }
 
-    var head = [],
-        dataRoot = options.data.root,
-        context = dataRoot._locals.context ? dataRoot._locals.context : null,
-        safeVersion = dataRoot._locals.safeVersion,
-        postCodeInjection = dataRoot && dataRoot.post ? dataRoot.post.codeinjection_head : null,
-        globalCodeinjection = settingsCache.get('ghost_head'),
-        useStructuredData = !config.isPrivacyDisabled('useStructuredData'),
-        referrerPolicy = config.get('referrerPolicy') ? config.get('referrerPolicy') : 'no-referrer-when-downgrade',
-        favicon = blogIcon.getIconUrl(),
-        iconType = blogIcon.getIconType(favicon);
+    const head = [];
+    const dataRoot = options.data.root;
+    const context = dataRoot._locals.context ? dataRoot._locals.context : null;
+    const safeVersion = dataRoot._locals.safeVersion;
+    const postCodeInjection = dataRoot && dataRoot.post ? dataRoot.post.codeinjection_head : null;
+    const globalCodeinjection = settingsCache.get('ghost_head');
+    const useStructuredData = !config.isPrivacyDisabled('useStructuredData');
+    const referrerPolicy = config.get('referrerPolicy') ? config.get('referrerPolicy') : 'no-referrer-when-downgrade';
+    const favicon = blogIcon.getIconUrl();
+    const iconType = blogIcon.getIconType(favicon);
 
     debug('preparation complete, begin fetch');
 

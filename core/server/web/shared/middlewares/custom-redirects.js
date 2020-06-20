@@ -1,11 +1,13 @@
 const fs = require('fs-extra');
-const express = require('express');
+const express = require('../../../../shared/express');
 const url = require('url');
 const path = require('path');
 const debug = require('ghost-ignition').debug('web:shared:mw:custom-redirects');
-const config = require('../../../config');
+const config = require('../../../../shared/config');
+const urlUtils = require('../../../../shared/url-utils');
 const errors = require('@tryghost/errors');
-const {logging, i18n} = require('../../../lib/common');
+const {i18n} = require('../../../lib/common');
+const logging = require('../../../../shared/logging');
 const redirectsService = require('../../../../frontend/services/redirects');
 
 const _private = {};
@@ -15,7 +17,7 @@ let customRedirectsRouter;
 _private.registerRoutes = () => {
     debug('redirects loading');
 
-    customRedirectsRouter = express.Router();
+    customRedirectsRouter = express.Router('redirects');
 
     try {
         let redirects = fs.readFileSync(path.join(config.getContentPath('data'), 'redirects.json'), 'utf-8');
@@ -51,13 +53,19 @@ _private.registerRoutes = () => {
             debug('register', redirect.from);
             customRedirectsRouter.get(new RegExp(redirect.from, options), function (req, res) {
                 const maxAge = redirect.permanent ? config.get('caching:customRedirects:maxAge') : 0;
-                const fromURL = url.parse(req.originalUrl);
                 const toURL = url.parse(redirect.to);
+                const currentURL = url.parse(req.url);
 
-                toURL.pathname = (toURL.hostname)
-                    ? toURL.pathname
-                    : fromURL.pathname.replace(new RegExp(redirect.from, options), toURL.pathname);
-                toURL.search = fromURL.search;
+                toURL.pathname = currentURL.pathname.replace(new RegExp(redirect.from, options), toURL.pathname);
+                toURL.search = currentURL.search;
+
+                /**
+                 * Only if the URL is internal should we prepend the Ghost subdirectory
+                 * @see https://github.com/TryGhost/Ghost/issues/10776
+                 */
+                if (!toURL.hostname) {
+                    toURL.pathname = urlUtils.urlJoin(urlUtils.getSubdir(), toURL.pathname);
+                }
 
                 res.set({
                     'Cache-Control': `public, max-age=${maxAge}`

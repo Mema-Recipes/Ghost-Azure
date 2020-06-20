@@ -1,4 +1,4 @@
-const express = require('express');
+const express = require('../../../../../shared/express');
 const apiCanary = require('../../../../api/canary');
 const apiMw = require('../../middleware');
 const mw = require('./middleware');
@@ -6,7 +6,7 @@ const mw = require('./middleware');
 const shared = require('../../../shared');
 
 module.exports = function apiRoutes() {
-    const router = express.Router();
+    const router = express.Router('canary admin');
 
     // alias delete with del
     router.del = router.delete;
@@ -42,6 +42,7 @@ module.exports = function apiRoutes() {
     router.get('/integrations', mw.authAdminApi, http(apiCanary.integrations.browse));
     router.get('/integrations/:id', mw.authAdminApi, http(apiCanary.integrations.read));
     router.post('/integrations', mw.authAdminApi, http(apiCanary.integrations.add));
+    router.post('/integrations/:id/api_key/:keyid/refresh', mw.authAdminApi, http(apiCanary.integrations.edit));
     router.put('/integrations/:id', mw.authAdminApi, http(apiCanary.integrations.edit));
     router.del('/integrations/:id', mw.authAdminApi, http(apiCanary.integrations.destroy));
 
@@ -60,6 +61,8 @@ module.exports = function apiRoutes() {
     router.get('/settings', mw.authAdminApi, http(apiCanary.settings.browse));
     router.get('/settings/:key', mw.authAdminApi, http(apiCanary.settings.read));
     router.put('/settings', mw.authAdminApi, http(apiCanary.settings.edit));
+    router.get('/settings/members/email', http(apiCanary.settings.validateMembersFromEmail));
+    router.post('/settings/members/email', mw.authAdminApi, http(apiCanary.settings.updateMembersFromEmail));
 
     // ## Users
     router.get('/users', mw.authAdminApi, http(apiCanary.users.browse));
@@ -85,14 +88,19 @@ module.exports = function apiRoutes() {
     router.get('/members', shared.middlewares.labs.members, mw.authAdminApi, http(apiCanary.members.browse));
     router.post('/members', shared.middlewares.labs.members, mw.authAdminApi, http(apiCanary.members.add));
 
-    router.get('/members/csv', shared.middlewares.labs.members, mw.authAdminApi, http(apiCanary.members.exportCSV));
-    router.post('/members/csv',
+    router.get('/members/stats', shared.middlewares.labs.members, mw.authAdminApi, http(apiCanary.members.stats));
+
+    router.post('/members/upload/validate', shared.middlewares.labs.members, mw.authAdminApi, http(apiCanary.members.validateImport));
+    router.get('/members/upload', shared.middlewares.labs.members, mw.authAdminApi, http(apiCanary.members.exportCSV));
+    router.post('/members/upload',
         shared.middlewares.labs.members,
         mw.authAdminApi,
         apiMw.upload.single('membersfile'),
         apiMw.upload.validation({type: 'members'}),
         http(apiCanary.members.importCSV)
     );
+
+    router.get('/members/stripe_connect', shared.middlewares.labs.members, mw.authAdminApi, http(apiCanary.membersStripeConnect.auth));
 
     router.get('/members/:id', shared.middlewares.labs.members, mw.authAdminApi, http(apiCanary.members.read));
     router.put('/members/:id', shared.middlewares.labs.members, mw.authAdminApi, http(apiCanary.members.edit));
