@@ -1,6 +1,5 @@
 const _ = require('lodash');
 const logging = require('../../../shared/logging');
-const config = require('../../../shared/config');
 const labsService = require('../labs');
 const membersService = require('./index');
 const urlUtils = require('../../../shared/url-utils');
@@ -71,8 +70,13 @@ const updateMemberData = async function (req, res) {
         const data = _.pick(req.body, 'name', 'subscribed');
         const member = await membersService.ssr.getMemberDataFromSession(req, res);
         if (member) {
-            const updatedMember = await membersService.api.members.update(data, {id: member.id});
-            res.json(formattedMemberResponse(updatedMember));
+            const options = {
+                id: member.id,
+                withRelated: ['stripeSubscriptions', 'stripeSubscriptions.customer']
+            };
+            const updatedMember = await membersService.api.members.update(data, options);
+
+            res.json(formattedMemberResponse(updatedMember.toJSON()));
         } else {
             res.json(null);
         }
@@ -84,28 +88,32 @@ const updateMemberData = async function (req, res) {
 };
 
 const getMemberSiteData = async function (req, res) {
-    const stripePaymentProcessor = settingsCache.get('members_subscription_settings').paymentProcessors.find(
-        paymentProcessor => paymentProcessor.adapter === 'stripe'
-    );
-    const stripeSecretToken = stripePaymentProcessor && stripePaymentProcessor.config.secret_token;
-    const stripePublicToken = stripePaymentProcessor && stripePaymentProcessor.config.public_token;
-    const isStripeConfigured = (!!stripeSecretToken && stripeSecretToken !== '' && !!stripePublicToken && stripePublicToken !== '');
+    const isStripeConfigured = membersService.config.isStripeConnected();
+    const domain = urlUtils.urlFor('home', true).match(new RegExp('^https?://([^/:?#]+)(?:[/:?#]|$)', 'i'));
+    const blogDomain = domain && domain[1];
+    let supportAddress = settingsCache.get('members_support_address') || 'noreply';
+    if (!supportAddress.includes('@')) {
+        supportAddress = `${supportAddress}@${blogDomain}`;
+    }
     const response = {
         title: settingsCache.get('title'),
         description: settingsCache.get('description'),
         logo: settingsCache.get('logo'),
-        brand: settingsCache.get('brand'),
+        icon: settingsCache.get('icon'),
+        accent_color: settingsCache.get('accent_color'),
         url: urlUtils.urlFor('home', true),
         version: ghostVersion.safe,
         plans: membersService.config.getPublicPlans(),
-        allowSelfSignup: membersService.config.getAllowSelfSignup(),
-        isStripeConfigured
+        allow_self_signup: membersService.config.getAllowSelfSignup(),
+        is_stripe_configured: isStripeConfigured,
+        portal_button: settingsCache.get('portal_button'),
+        portal_name: settingsCache.get('portal_name'),
+        portal_plans: settingsCache.get('portal_plans'),
+        portal_button_icon: settingsCache.get('portal_button_icon'),
+        portal_button_signup_text: settingsCache.get('portal_button_signup_text'),
+        portal_button_style: settingsCache.get('portal_button_style'),
+        members_support_address: supportAddress
     };
-
-    // Brand is currently an experimental feature
-    if (!config.get('enableDeveloperExperiments')) {
-        delete response.brand;
-    }
 
     res.json({site: response});
 };

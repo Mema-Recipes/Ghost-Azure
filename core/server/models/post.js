@@ -3,7 +3,7 @@ const _ = require('lodash');
 const uuid = require('uuid');
 const moment = require('moment');
 const Promise = require('bluebird');
-const sequence = require('../lib/promise/sequence');
+const {sequence} = require('@tryghost/promise');
 const {i18n} = require('../lib/common');
 const errors = require('@tryghost/errors');
 const htmlToText = require('html-to-text');
@@ -68,6 +68,13 @@ Post = ghostBookshelf.Model.extend({
         posts_meta: 'posts_meta'
     },
 
+    relationsMeta: {
+        posts_meta: {
+            targetTableName: 'posts_meta',
+            foreignKey: 'post_id'
+        }
+    },
+
     /**
      * The base model keeps only the columns, which are defined in the schema.
      * We have to add the relations on top, otherwise bookshelf-relations
@@ -81,6 +88,26 @@ Post = ghostBookshelf.Model.extend({
         });
 
         return filteredKeys;
+    },
+
+    orderAttributes: function orderAttributes() {
+        let keys = ghostBookshelf.Model.prototype.orderAttributes.apply(this, arguments);
+
+        // extend ordered keys with post_meta keys
+        let postsMetaKeys = _.without(ghostBookshelf.model('PostsMeta').prototype.orderAttributes(), 'posts_meta.id', 'posts_meta.post_id');
+
+        return [...keys, ...postsMetaKeys];
+    },
+
+    filterExpansions: function filterExpansions() {
+        const postsMetaKeys = _.without(ghostBookshelf.model('PostsMeta').prototype.orderAttributes(), 'posts_meta.id', 'posts_meta.post_id');
+
+        return postsMetaKeys.map((pmk) => {
+            return {
+                key: pmk.split('.')[1],
+                replacement: pmk
+            };
+        });
     },
 
     emitChange: function emitChange(event, options = {}) {
@@ -429,14 +456,20 @@ Post = ghostBookshelf.Model.extend({
         }
 
         if (this.hasChanged('html') || !this.get('plaintext')) {
-            const plaintext = htmlToText.fromString(this.get('html'), {
-                wordwrap: 80,
-                ignoreImage: true,
-                hideLinkHrefIfSameAsText: true,
-                preserveNewlines: true,
-                returnDomByDefault: true,
-                uppercaseHeadings: false
-            });
+            let plaintext;
+
+            if (this.get('html') === null) {
+                plaintext = null;
+            } else {
+                plaintext = htmlToText.fromString(this.get('html'), {
+                    wordwrap: 80,
+                    ignoreImage: true,
+                    hideLinkHrefIfSameAsText: true,
+                    preserveNewlines: true,
+                    returnDomByDefault: true,
+                    uppercaseHeadings: false
+                });
+            }
 
             // CASE: html is e.g. <p></p>
             // @NOTE: Otherwise we will always update the resource to `plaintext: ''` and Bookshelf thinks that this
@@ -683,9 +716,26 @@ Post = ghostBookshelf.Model.extend({
 
         return attrs;
     },
+
+    // NOTE: overloads models base method to take `post_meta` changes into account
+    wasChanged() {
+        if (!this._changed) {
+            return true;
+        }
+
+        const postMetaChanged = this.relations.posts_meta && this.relations.posts_meta._changed && Object.keys(this.relations.posts_meta._changed).length;
+
+        if (!Object.keys(this._changed).length && !postMetaChanged) {
+            return false;
+        }
+
+        return true;
+    },
+
     enforcedFilters: function enforcedFilters(options) {
         return options.context && options.context.public ? 'status:published' : null;
     },
+
     defaultFilters: function defaultFilters(options) {
         if (options.context && options.context.internal) {
             return null;
@@ -885,6 +935,13 @@ Post = ghostBookshelf.Model.extend({
                                 // Pass along the updated attributes for checking status changes
                                 found._previousAttributes = post._previousAttributes;
                                 found._changed = post._changed;
+
+                                // NOTE: `posts_meta` fields are equivalent in terms of "wasChanged" logic to the rest of posts's table fields.
+                                //       Keeping track of them is needed to check if anything was changed in post's resource.
+                                if (found.relations.posts_meta) {
+                                    found.relations.posts_meta._changed = post.relations.posts_meta._changed;
+                                }
+
                                 return found;
                             }
                         });
